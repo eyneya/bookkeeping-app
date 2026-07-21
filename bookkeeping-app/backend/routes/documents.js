@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const pool = require('../db/pool');
 const { getAiProvider } = require('../services/aiExtraction');
+const { getStorageAdapter } = require('../services/storage');
 const { auditLog } = require('../middleware/auditLog');
 const { userHasClientAccess, userHasCustomerAccess } = require('../middleware/clientAccess');
 const { assertPeriodNotLocked } = require('../services/periodLock');
@@ -73,6 +74,30 @@ function calculateReconciliation(beginningBalance, endingBalance, transactions) 
 }
 
 /**
+ * Persist the uploaded source file to the owner's cloud storage folder
+ * (Google Drive or OneDrive, per the client/customer record) and return the
+ * stored file id. Fails gracefully — if no cloud credentials are configured
+ * or the owner has no storage folder yet, returns null so extraction still
+ * proceeds; the original file simply isn't retained long-term.
+ */
+async function persistToStorage(file, filename, clientId, customerId) {
+  const ownerResult = clientId
+    ? await pool.query('SELECT storage_provider, storage_folder_id FROM clients WHERE id = $1', [clientId])
+    : await pool.query('SELECT storage_provider, storage_folder_id FROM customers WHERE id = $1', [customerId]);
+  const owner = ownerResult.rows[0];
+  if (!owner || !owner.storage_folder_id) return null;
+
+  try {
+    const adapter = getStorageAdapter(owner.storage_provider);
+    const result = await adapter.uploadFile(file.buffer, filename, owner.storage_folder_id, file.mimetype);
+    return result.fileId;
+  } catch (err) {
+    console.error(`Storage upload failed for ${owner.storage_provider}:`, err.message);
+    return null;
+  }
+}
+
+/**
  * Upload + process a single document.
  * Field name in the multipart form must be "file".
  * Body must include: doc_type ('bank_statement' | 'invoice'), and EITHER:
@@ -97,10 +122,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
   const safeFilename = sanitizeFilename(file.originalname);
 
+  const storagePath = await persistToStorage(file, safeFilename, client_id, customer_id);
+
   const docInsert = await pool.query(
-    `INSERT INTO documents (client_id, customer_id, doc_type, original_filename, status)
-     VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
-    [client_id || null, customer_id || null, doc_type, safeFilename]
+    `INSERT INTO documents (client_id, customer_id, doc_type, original_filename, storage_path, status)
+     VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING id`,
+    [client_id || null, customer_id || null, doc_type, safeFilename, storagePath]
   );
   const documentId = docInsert.rows[0].id;
 
