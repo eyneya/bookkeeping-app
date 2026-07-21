@@ -1,0 +1,11 @@
+{
+  "name": "bookkeeping-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "cd bookkeeping-app/frontend && npm install && cd ../backend && npm install",
+    "dev": "(cd bookkeeping-app/backend && PORT=3001 node server.js) & (cd bookkeeping-app/frontend && npm run dev)",
+    "build": "cd bookkeeping-app/frontend && npm run build",
+    "start": "cd bookkeeping-app/backend && PORT=3001 node server.js"
+  }
+}

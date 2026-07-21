@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
+export const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 /** Wraps fetch to attach the JWT and handle expired/invalid sessions in one place. */
 export async function apiFetch(path, options = {}) {
