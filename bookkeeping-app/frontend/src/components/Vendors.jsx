@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
+import { colors, fonts, spacing, button, input, select, table, alert } from '../theme';
 
 export default function Vendors({ clientId }) {
   const [vendors, setVendors] = useState([]);
@@ -39,76 +40,91 @@ export default function Vendors({ clientId }) {
 
   return (
     <div>
-      <h3>Vendors</h3>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, marginBottom: 16 }}>
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-            <th style={cell}>Name</th>
-            <th style={cell}>Tax ID type</th>
-            <th style={cell}>Requires 1099</th>
-            <th style={cell}>W-9 on file</th>
-          </tr>
-        </thead>
-        <tbody>
-          {vendors.map((v) => (
-            <tr key={v.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-              <td style={cell}>{v.name}</td>
-              <td style={cell}>{v.tax_id_type || '—'}</td>
-              <td style={cell}>{v.requires_1099 ? 'Yes' : 'No'}</td>
-              <td style={cell}>
-                <button onClick={() => toggleW9(v.id, v.w9_on_file)} style={btn}>
-                  {v.w9_on_file ? '✓ On file' : 'Mark received'}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <h3 style={styles.title}>Vendors & 1099 Tracking</h3>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <input placeholder="Vendor name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={input} />
-        <select value={form.tax_id_type} onChange={(e) => setForm({ ...form, tax_id_type: e.target.value })} style={input}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={table.container}>
+          <thead>
+            <tr>
+              <th style={table.headerCell}>Name</th>
+              <th style={table.headerCell}>Tax ID type</th>
+              <th style={table.headerCell}>Requires 1099</th>
+              <th style={table.headerCell}>W-9 on file</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vendors.map((v) => (
+              <tr key={v.id} className="hoverable-row" style={table.row}>
+                <td style={{ ...table.cell, fontWeight: fonts.weightMedium }}>{v.name}</td>
+                <td style={table.cell}>{v.tax_id_type || '—'}</td>
+                <td style={table.cell}>{v.requires_1099 ? 'Yes' : 'No'}</td>
+                <td style={table.cell}>
+                  <button onClick={() => toggleW9(v.id, v.w9_on_file)} style={v.w9_on_file ? button.smallAccent : button.small}>
+                    {v.w9_on_file ? '&#10003; On file' : 'Mark received'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {vendors.length === 0 && (
+              <tr><td colSpan={4} style={{ ...table.cell, textAlign: 'center', color: colors.textSubtle, padding: spacing.xxl }}>No vendors yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.sm, flexWrap: 'wrap', marginTop: spacing.lg }}>
+        <input placeholder="Vendor name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ ...input.base, flex: 1, minWidth: 160 }} />
+        <select value={form.tax_id_type} onChange={(e) => setForm({ ...form, tax_id_type: e.target.value })} style={{ ...select, minWidth: 100 }}>
           <option value="ein">EIN</option>
           <option value="ssn">SSN</option>
         </select>
-        <input placeholder="Tax ID (optional for now)" value={form.tax_id} onChange={(e) => setForm({ ...form, tax_id: e.target.value })} style={input} />
-        <label style={{ fontSize: 13 }}>
-          <input type="checkbox" checked={form.requires_1099} onChange={(e) => setForm({ ...form, requires_1099: e.target.checked })} />
-          {' '}Requires 1099
+        <input placeholder="Tax ID (optional)" value={form.tax_id} onChange={(e) => setForm({ ...form, tax_id: e.target.value })} style={{ ...input.base, minWidth: 160 }} />
+        <label style={{ fontSize: fonts.sizeSm, color: colors.text, display: 'flex', alignItems: 'center', gap: spacing.xs }}>
+          <input type="checkbox" checked={form.requires_1099} onChange={(e) => setForm({ ...form, requires_1099: e.target.checked })} style={{ accentColor: colors.teal }} />
+          Requires 1099
         </label>
-        <button onClick={addVendor} style={{ padding: '8px 12px', cursor: 'pointer' }}>+ Add vendor</button>
+        <button onClick={addVendor} style={button.primary}>+ Add vendor</button>
       </div>
-      <p style={{ fontSize: 12, color: '#888' }}>
-        Assign a vendor to a transaction from the Review tab to track payments toward the $600 1099 threshold.
-      </p>
+      <p style={styles.note}>Assign a vendor to a transaction from the Review tab to track payments toward the $600 1099 threshold.</p>
 
-      <hr style={{ margin: '20px 0' }} />
+      <div style={{ ...styles.divider }} />
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} style={{ ...input, width: 100 }} />
-        <button onClick={runSummary} style={{ padding: '8px 12px', cursor: 'pointer' }}>Run 1099 summary</button>
+      <h4 style={styles.sectionTitle}>1099 Summary</h4>
+      <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginBottom: spacing.md }}>
+        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} style={{ ...input.base, width: 100 }} />
+        <button onClick={runSummary} style={button.accent}>Run 1099 summary</button>
       </div>
       {summary && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr><th>Vendor</th><th>Total Paid</th><th>Needs 1099</th><th>W-9 on File</th></tr>
-          </thead>
-          <tbody>
-            {summary.vendors.map((v) => (
-              <tr key={v.vendor_id} style={{ color: v.needs_1099 && !v.w9_on_file ? '#dc2626' : 'inherit' }}>
-                <td>{v.name}</td>
-                <td>{v.total_paid.toFixed(2)}</td>
-                <td>{v.needs_1099 ? 'Yes' : 'No'}</td>
-                <td>{v.w9_on_file ? 'Yes' : 'No'}</td>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={table.container}>
+            <thead>
+              <tr>
+                <th style={table.headerCell}>Vendor</th>
+                <th style={table.headerCell}>Total Paid</th>
+                <th style={table.headerCell}>Needs 1099</th>
+                <th style={table.headerCell}>W-9 on File</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {summary.vendors.map((v) => (
+                <tr key={v.vendor_id} className="hoverable-row" style={{ ...table.row, color: v.needs_1099 && !v.w9_on_file ? colors.error : colors.text }}>
+                  <td style={table.cell}>{v.name}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{v.total_paid.toFixed(2)}</td>
+                  <td style={table.cell}>{v.needs_1099 ? 'Yes' : 'No'}</td>
+                  <td style={table.cell}>{v.w9_on_file ? 'Yes' : 'No'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 }
 
-const cell = { padding: '8px 6px' };
-const input = { padding: 8, fontSize: 14 };
-const btn = { padding: '4px 8px', fontSize: 12, cursor: 'pointer' };
+const styles = {
+  title: { fontSize: fonts.sizeLg, fontWeight: fonts.weightSemibold, color: colors.navy, margin: `0 0 ${spacing.lg}px` },
+  note: { fontSize: fonts.sizeXs, color: colors.textSubtle, margin: `${spacing.sm}px 0 ${spacing.xl}px` },
+  divider: { borderTop: `1px solid ${colors.border}`, margin: `${spacing.xl}px 0` },
+  sectionTitle: { fontSize: fonts.sizeMd, fontWeight: fonts.weightSemibold, color: colors.navy, margin: `0 0 ${spacing.md}px` },
+};

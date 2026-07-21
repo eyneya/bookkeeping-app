@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch, getCurrentUser } from '../api';
 import ConfirmDialog from './ConfirmDialog';
+import { colors, fonts, spacing, radius, button, input, select, table, alert, badge } from '../theme';
 
 export default function ReviewQueue({ clientId }) {
   const [transactions, setTransactions] = useState([]);
@@ -11,7 +12,7 @@ export default function ReviewQueue({ clientId }) {
   const [offset, setOffset] = useState(0);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
-  const [lockOverridePrompt, setLockOverridePrompt] = useState(null); // { message, retry: () => void }
+  const [lockOverridePrompt, setLockOverridePrompt] = useState(null);
   const isAdmin = getCurrentUser()?.role === 'admin';
   const PAGE_SIZE = 100;
 
@@ -66,95 +67,121 @@ export default function ReviewQueue({ clientId }) {
     }
   };
 
+  const needsReviewCount = transactions.filter((t) => t.needs_review).length;
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+      <h3 style={styles.title}>Review Queue</h3>
+      <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.lg, alignItems: 'center' }}>
         <input
           placeholder="Search descriptions…"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
-          style={{ padding: 8, fontSize: 14, flex: 1 }}
+          style={{ ...input.base, flex: 1, maxWidth: 360 }}
         />
       </div>
-      <p style={{ color: '#666', fontSize: 13 }}>
-        {transactions.filter((t) => t.needs_review).length} transaction(s) on this page need review, {total} total.
-        Assign each one to an account, flag business vs. personal, and tag a vendor if it should count toward a 1099.
-      </p>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-            <th style={cell}>Date</th>
-            <th style={cell}>Description</th>
-            <th style={cell}>Amount</th>
-            <th style={cell}>Account</th>
-            <th style={cell}>Business?</th>
-            <th style={cell}>Vendor (1099)</th>
-            <th style={cell}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.map((t) => (
-            <tr key={t.id} style={{ borderBottom: '1px solid #f0f0f0', background: t.possible_duplicate ? '#fef2f2' : t.needs_review ? '#fffbeb' : 'white' }}>
-              <td style={cell}>{t.txn_date?.slice(0, 10)}</td>
-              <td style={cell}>
-                {t.description}
-                {t.possible_duplicate && (
-                  <div style={{ fontSize: 11, color: '#dc2626' }}>⚠ Possible duplicate of an existing transaction</div>
-                )}
-              </td>
-              <td style={cell}>{Number(t.amount).toFixed(2)}</td>
-              <td style={cell}>
-                <select
-                  value={t.account_id || ''}
-                  onChange={(e) => updateTransaction(t.id, { account_id: e.target.value })}
-                >
-                  <option value="" disabled>Choose account…</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-              </td>
-              <td style={cell}>
-                <select
-                  value={t.is_business === null ? '' : String(t.is_business)}
-                  onChange={(e) => updateTransaction(t.id, { is_business: e.target.value === 'true' })}
-                >
-                  <option value="" disabled>—</option>
-                  <option value="true">Business</option>
-                  <option value="false">Personal</option>
-                </select>
-              </td>
-              <td style={cell}>
-                <select
-                  value={t.vendor_id || ''}
-                  onChange={(e) => updateTransaction(t.id, { vendor_id: e.target.value || null })}
-                >
-                  <option value="">— none —</option>
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-              </td>
-              <td style={cell}>
-                {!t.flagged_as_business && !t.journal_entry_id && (
-                  <button onClick={() => setConfirmDeleteId(t.id)} style={{ fontSize: 12, cursor: 'pointer', color: '#dc2626' }}>
-                    Delete
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
-        <button disabled={offset === 0} onClick={() => setOffset(Math.max(offset - PAGE_SIZE, 0))} style={{ cursor: offset === 0 ? 'default' : 'pointer' }}>
+      <div style={{ ...alert.info, marginBottom: spacing.lg, display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+        <span style={{ ...badge.base, ...badge.warning, flexShrink: 0 }}>{needsReviewCount}</span>
+        <span>{needsReviewCount} transaction(s) on this page need review, {total} total. Assign each one to an account, flag business vs. personal, and tag a vendor if it should count toward a 1099.</span>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={table.container}>
+          <thead>
+            <tr>
+              <th style={table.headerCell}>Date</th>
+              <th style={table.headerCell}>Description</th>
+              <th style={table.headerCell}>Amount</th>
+              <th style={table.headerCell}>Account</th>
+              <th style={table.headerCell}>Business?</th>
+              <th style={table.headerCell}>Vendor (1099)</th>
+              <th style={table.headerCell}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map((t) => (
+              <tr
+                key={t.id}
+                className="hoverable-row"
+                style={{
+                  ...table.row,
+                  background: t.possible_duplicate ? colors.errorBg : t.needs_review ? colors.warningBg : colors.white,
+                }}
+              >
+                <td style={table.cell}>{t.txn_date?.slice(0, 10)}</td>
+                <td style={table.cell}>
+                  {t.description}
+                  {t.possible_duplicate && (
+                    <div style={{ fontSize: fonts.sizeXs, color: colors.error, marginTop: spacing.xs }}>
+                      &#9888; Possible duplicate of an existing transaction
+                    </div>
+                  )}
+                </td>
+                <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightMedium }}>{Number(t.amount).toFixed(2)}</td>
+                <td style={table.cell}>
+                  <select
+                    value={t.account_id || ''}
+                    onChange={(e) => updateTransaction(t.id, { account_id: e.target.value })}
+                    style={{ ...input.small, minWidth: 140 }}
+                  >
+                    <option value="" disabled>Choose account…</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </td>
+                <td style={table.cell}>
+                  <select
+                    value={t.is_business === null ? '' : String(t.is_business)}
+                    onChange={(e) => updateTransaction(t.id, { is_business: e.target.value === 'true' })}
+                    style={{ ...input.small, minWidth: 100 }}
+                  >
+                    <option value="" disabled>—</option>
+                    <option value="true">Business</option>
+                    <option value="false">Personal</option>
+                  </select>
+                </td>
+                <td style={table.cell}>
+                  <select
+                    value={t.vendor_id || ''}
+                    onChange={(e) => updateTransaction(t.id, { vendor_id: e.target.value || null })}
+                    style={{ ...input.small, minWidth: 120 }}
+                  >
+                    <option value="">— none —</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                </td>
+                <td style={table.cell}>
+                  {!t.flagged_as_business && !t.journal_entry_id && (
+                    <button onClick={() => setConfirmDeleteId(t.id)} style={button.smallDanger}>
+                      Delete
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {transactions.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ ...table.cell, textAlign: 'center', color: colors.textSubtle, padding: spacing.xxxl }}>
+                  No transactions to review.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginTop: spacing.lg }}>
+        <button disabled={offset === 0} onClick={() => setOffset(Math.max(offset - PAGE_SIZE, 0))} style={button.secondary}>
           Previous
         </button>
-        <span style={{ fontSize: 13, color: '#666' }}>
+        <span style={{ fontSize: fonts.sizeSm, color: colors.textMuted }}>
           {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
         </span>
-        <button disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)} style={{ cursor: offset + PAGE_SIZE >= total ? 'default' : 'pointer' }}>
+        <button disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)} style={button.secondary}>
           Next
         </button>
       </div>
@@ -191,4 +218,6 @@ export default function ReviewQueue({ clientId }) {
   );
 }
 
-const cell = { padding: '8px 6px' };
+const styles = {
+  title: { fontSize: fonts.sizeLg, fontWeight: fonts.weightSemibold, color: colors.navy, margin: `0 0 ${spacing.lg}px` },
+};

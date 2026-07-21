@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api';
 import Modal from './Modal';
+import { colors, fonts, spacing, button, input, table, alert } from '../theme';
 
 export default function FixedAssets({ clientId }) {
   const [assets, setAssets] = useState([]);
@@ -53,81 +54,87 @@ export default function FixedAssets({ clientId }) {
 
   return (
     <div>
-      <h3>Fixed Assets</h3>
-      <p style={{ fontSize: 12, color: '#b45309' }}>
+      <h3 style={styles.title}>Fixed Assets</h3>
+      <div style={{ ...alert.warning, marginBottom: spacing.lg }}>
         Straight-line depreciation only — verify final figures against IRS Pub. 946 (MACRS tables) or your tax software before filing.
-      </p>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, marginBottom: 16 }}>
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #ddd' }}>
-            <th style={cell}>Description</th>
-            <th style={cell}>Purchase Date</th>
-            <th style={cell}>Amount</th>
-            <th style={cell}>Useful Life</th>
-            <th style={cell}>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {assets.map((a) => (
-            <tr key={a.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-              <td style={cell}>{a.description}</td>
-              <td style={cell}>{a.purchase_date?.slice(0, 10)}</td>
-              <td style={cell}>{Number(a.purchase_amount).toFixed(2)}</td>
-              <td style={cell}>{a.useful_life_years} yrs</td>
-              <td style={cell}>
-                {a.disposed_date ? `Disposed ${a.disposed_date.slice(0, 10)}` : (
-                  <button onClick={() => setDisposeAssetId(a.id)} style={btn}>Record disposal</button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <input placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} style={input} />
-        <input type="date" value={form.purchase_date} onChange={(e) => setForm({ ...form, purchase_date: e.target.value })} style={input} />
-        <input type="number" placeholder="Purchase amount" value={form.purchase_amount} onChange={(e) => setForm({ ...form, purchase_amount: e.target.value })} style={input} />
-        <input type="number" placeholder="Sec. 179 amount" value={form.section_179_amount} onChange={(e) => setForm({ ...form, section_179_amount: e.target.value })} style={{ ...input, width: 130 }} />
-        <input type="number" placeholder="Bonus depr." value={form.bonus_depreciation_amount} onChange={(e) => setForm({ ...form, bonus_depreciation_amount: e.target.value })} style={{ ...input, width: 130 }} />
-        <input type="number" placeholder="Useful life (yrs)" value={form.useful_life_years} onChange={(e) => setForm({ ...form, useful_life_years: e.target.value })} style={{ ...input, width: 140 }} />
-        <button onClick={addAsset} style={{ padding: '8px 12px', cursor: 'pointer' }}>+ Add asset</button>
       </div>
 
-      <hr style={{ margin: '20px 0' }} />
+      <div style={{ overflowX: 'auto' }}>
+        <table style={table.container}>
+          <thead>
+            <tr>
+              <th style={table.headerCell}>Description</th>
+              <th style={table.headerCell}>Purchase Date</th>
+              <th style={table.headerCell}>Amount</th>
+              <th style={table.headerCell}>Useful Life</th>
+              <th style={table.headerCell}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assets.map((a) => (
+              <tr key={a.id} className="hoverable-row" style={table.row}>
+                <td style={{ ...table.cell, fontWeight: fonts.weightMedium }}>{a.description}</td>
+                <td style={table.cell}>{a.purchase_date?.slice(0, 10)}</td>
+                <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(a.purchase_amount).toFixed(2)}</td>
+                <td style={table.cell}>{a.useful_life_years} yrs</td>
+                <td style={table.cell}>
+                  {a.disposed_date ? <span style={{ color: colors.textMuted }}>Disposed {a.disposed_date.slice(0, 10)}</span> : (
+                    <button onClick={() => setDisposeAssetId(a.id)} style={button.small}>Record disposal</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {assets.length === 0 && (
+              <tr><td colSpan={5} style={{ ...table.cell, textAlign: 'center', color: colors.textSubtle, padding: spacing.xxl }}>No assets yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} style={{ ...input, width: 100 }} />
-        <button onClick={runSchedule} style={{ padding: '8px 12px', cursor: 'pointer' }}>Run depreciation schedule</button>
+      <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.lg, flexWrap: 'wrap', marginTop: spacing.lg }}>
+        <input placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} style={{ ...input.base, flex: 1, minWidth: 140 }} />
+        <input type="date" value={form.purchase_date} onChange={(e) => setForm({ ...form, purchase_date: e.target.value })} style={input.base} />
+        <input type="number" placeholder="Purchase amount" value={form.purchase_amount} onChange={(e) => setForm({ ...form, purchase_amount: e.target.value })} style={{ ...input.base, width: 140 }} />
+        <input type="number" placeholder="Sec. 179" value={form.section_179_amount} onChange={(e) => setForm({ ...form, section_179_amount: e.target.value })} style={{ ...input.base, width: 110 }} />
+        <input type="number" placeholder="Bonus depr." value={form.bonus_depreciation_amount} onChange={(e) => setForm({ ...form, bonus_depreciation_amount: e.target.value })} style={{ ...input.base, width: 110 }} />
+        <input type="number" placeholder="Life (yrs)" value={form.useful_life_years} onChange={(e) => setForm({ ...form, useful_life_years: e.target.value })} style={{ ...input.base, width: 100 }} />
+        <button onClick={addAsset} style={button.primary}>+ Add asset</button>
+      </div>
+
+      <div style={styles.divider} />
+
+      <h4 style={styles.sectionTitle}>Depreciation Schedule</h4>
+      <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginBottom: spacing.md }}>
+        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} style={{ ...input.base, width: 100 }} />
+        <button onClick={runSchedule} style={button.accent}>Run schedule</button>
       </div>
       {schedule && (
-        <div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={table.container}>
             <thead>
-              <tr><th>Asset</th><th>{schedule.year} Depreciation</th><th>Accumulated</th><th>Book Value</th></tr>
+              <tr>
+                <th style={table.headerCell}>Asset</th>
+                <th style={table.headerCell}>{schedule.year} Depreciation</th>
+                <th style={table.headerCell}>Accumulated</th>
+                <th style={table.headerCell}>Book Value</th>
+              </tr>
             </thead>
             <tbody>
               {schedule.assets.map((a) => (
-                <tr key={a.asset_id}>
-                  <td>{a.description}</td>
-                  <td>{a.annualDepreciation.toFixed(2)}</td>
-                  <td>{a.accumulatedDepreciation.toFixed(2)}</td>
-                  <td>{a.bookValue.toFixed(2)}</td>
+                <tr key={a.asset_id} className="hoverable-row" style={table.row}>
+                  <td style={table.cell}>{a.description}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{a.annualDepreciation.toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{a.accumulatedDepreciation.toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{a.bookValue.toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p style={{ fontSize: 12, color: '#888', marginTop: 8 }}>{schedule.caveat}</p>
+          <p style={{ fontSize: fonts.sizeXs, color: colors.textSubtle, marginTop: spacing.sm }}>{schedule.caveat}</p>
         </div>
       )}
 
-      {disposeAssetId && (
-        <DisposeAssetModal
-          onClose={() => setDisposeAssetId(null)}
-          onSubmit={disposeAsset}
-        />
-      )}
+      {disposeAssetId && <DisposeAssetModal onClose={() => setDisposeAssetId(null)} onSubmit={disposeAsset} />}
     </div>
   );
 }
@@ -138,23 +145,24 @@ function DisposeAssetModal({ onClose, onSubmit }) {
 
   return (
     <Modal title="Record asset disposal" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <label style={{ fontSize: 13 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        <label style={styles.fieldLabel}>
           Disposal date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...input, width: '100%', marginTop: 4 }} />
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...input.base, width: '100%', marginTop: spacing.xs }} />
         </label>
-        <label style={{ fontSize: 13 }}>
+        <label style={styles.fieldLabel}>
           Sale/disposal proceeds (0 if scrapped)
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...input, width: '100%', marginTop: 4 }} />
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...input.base, width: '100%', marginTop: spacing.xs }} />
         </label>
-        <button onClick={() => onSubmit(date, amount)} style={{ padding: '8px 12px', cursor: 'pointer', marginTop: 8 }}>
-          Save
-        </button>
+        <button onClick={() => onSubmit(date, amount)} style={{ ...button.primary, marginTop: spacing.sm }}>Save</button>
       </div>
     </Modal>
   );
 }
 
-const cell = { padding: '8px 6px' };
-const input = { padding: 8, fontSize: 14 };
-const btn = { padding: '4px 8px', fontSize: 12, cursor: 'pointer' };
+const styles = {
+  title: { fontSize: fonts.sizeLg, fontWeight: fonts.weightSemibold, color: colors.navy, margin: `0 0 ${spacing.lg}px` },
+  sectionTitle: { fontSize: fonts.sizeMd, fontWeight: fonts.weightSemibold, color: colors.navy, margin: `0 0 ${spacing.md}px` },
+  divider: { borderTop: `1px solid ${colors.border}`, margin: `${spacing.xl}px 0` },
+  fieldLabel: { fontSize: fonts.sizeSm, fontWeight: fonts.weightMedium, color: colors.gray700, display: 'flex', flexDirection: 'column' },
+};
