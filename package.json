@@ -4,11 +4,8 @@
   "private": true,
   "scripts": {
     "postinstall": "cd bookkeeping-app/frontend && npm install && cd ../backend && npm install",
-    "dev": "concurrently -n backend,frontend -c blue,green \"PORT=3001 node bookkeeping-app/backend/server.js\" \"cd bookkeeping-app/frontend && npm run dev\"",
+    "dev": "(cd bookkeeping-app/backend && PORT=3001 node server.js) & (cd bookkeeping-app/frontend && npm run dev)",
     "build": "cd bookkeeping-app/frontend && npm run build",
     "start": "cd bookkeeping-app/backend && PORT=3001 node server.js"
-  },
-  "devDependencies": {
-    "concurrently": "^10.0.3"
   }
 }
