@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { listVendors, createVendor, updateVendor, runReport } from '../api';
 import { colors, fonts, spacing, button, input, select, table, alert } from '../theme';
 
 export default function Vendors({ clientId }) {
@@ -8,34 +8,28 @@ export default function Vendors({ clientId }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [form, setForm] = useState({ name: '', tax_id: '', tax_id_type: 'ein', requires_1099: true, w9_on_file: false });
 
-  const load = () => {
-    apiFetch(`/api/vendors?client_id=${clientId}`).then((r) => r.json()).then(setVendors);
-  };
+  const load = () => { listVendors(clientId).then(setVendors); };
   useEffect(load, [clientId]);
 
   const addVendor = async () => {
     if (!form.name.trim()) return;
-    await apiFetch('/api/vendors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, ...form }),
-    });
+    await createVendor({ client_id: clientId, ...form });
     setForm({ name: '', tax_id: '', tax_id_type: 'ein', requires_1099: true, w9_on_file: false });
     load();
   };
 
   const toggleW9 = async (vendorId, current) => {
-    await apiFetch(`/api/vendors/${vendorId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ w9_on_file: !current }),
-    });
+    await updateVendor(vendorId, { w9_on_file: !current });
     load();
   };
 
   const runSummary = async () => {
-    const res = await apiFetch(`/api/reports/1099-summary?client_id=${clientId}&year=${year}`);
-    setSummary(await res.json());
+    try {
+      const data = await runReport('1099-summary', { client_id: clientId, year });
+      setSummary(data);
+    } catch (err) {
+      setSummary({ error: err.message });
+    }
   };
 
   return (
@@ -60,7 +54,7 @@ export default function Vendors({ clientId }) {
                 <td style={table.cell}>{v.requires_1099 ? 'Yes' : 'No'}</td>
                 <td style={table.cell}>
                   <button onClick={() => toggleW9(v.id, v.w9_on_file)} style={v.w9_on_file ? button.smallAccent : button.small}>
-                    {v.w9_on_file ? '&#10003; On file' : 'Mark received'}
+                    {v.w9_on_file ? '✓ On file' : 'Mark received'}
                   </button>
                 </td>
               </tr>
@@ -87,14 +81,15 @@ export default function Vendors({ clientId }) {
       </div>
       <p style={styles.note}>Assign a vendor to a transaction from the Review tab to track payments toward the $600 1099 threshold.</p>
 
-      <div style={{ ...styles.divider }} />
+      <div style={styles.divider} />
 
       <h4 style={styles.sectionTitle}>1099 Summary</h4>
       <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginBottom: spacing.md }}>
         <input type="number" value={year} onChange={(e) => setYear(e.target.value)} style={{ ...input.base, width: 100 }} />
         <button onClick={runSummary} style={button.accent}>Run 1099 summary</button>
       </div>
-      {summary && (
+      {summary?.error && <div style={{ ...alert.error, marginBottom: spacing.md }}>{summary.error}</div>}
+      {summary && !summary.error && (
         <div style={{ overflowX: 'auto' }}>
           <table style={table.container}>
             <thead>
@@ -106,14 +101,17 @@ export default function Vendors({ clientId }) {
               </tr>
             </thead>
             <tbody>
-              {summary.vendors.map((v) => (
+              {(summary.vendors || []).map((v) => (
                 <tr key={v.vendor_id} className="hoverable-row" style={{ ...table.row, color: v.needs_1099 && !v.w9_on_file ? colors.error : colors.text }}>
                   <td style={table.cell}>{v.name}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{v.total_paid.toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(v.total_paid).toFixed(2)}</td>
                   <td style={table.cell}>{v.needs_1099 ? 'Yes' : 'No'}</td>
                   <td style={table.cell}>{v.w9_on_file ? 'Yes' : 'No'}</td>
                 </tr>
               ))}
+              {(summary.vendors || []).length === 0 && (
+                <tr><td colSpan={4} style={{ ...table.cell, textAlign: 'center', color: colors.textSubtle, padding: spacing.xxl }}>No payments to 1099 vendors in {year}.</td></tr>
+              )}
             </tbody>
           </table>
         </div>

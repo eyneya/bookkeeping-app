@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { listLoans, createLoan, runReport } from '../api';
 import { colors, fonts, spacing, button, input, table, alert } from '../theme';
 
 export default function Loans({ clientId }) {
@@ -8,24 +8,18 @@ export default function Loans({ clientId }) {
   const [schedule, setSchedule] = useState(null);
   const [form, setForm] = useState({ lender_name: '', original_principal: '', annual_interest_rate: '', origination_date: '', term_months: '60' });
 
-  const load = () => {
-    apiFetch(`/api/loans?client_id=${clientId}`).then((r) => r.json()).then(setLoans);
-  };
+  const load = () => { listLoans(clientId).then(setLoans); };
   useEffect(load, [clientId]);
 
   const addLoan = async () => {
     if (!form.lender_name.trim() || !form.original_principal || !form.origination_date) return;
-    await apiFetch('/api/loans', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        lender_name: form.lender_name,
-        original_principal: Number(form.original_principal),
-        annual_interest_rate: Number(form.annual_interest_rate),
-        origination_date: form.origination_date,
-        term_months: Number(form.term_months),
-      }),
+    await createLoan({
+      client_id: clientId,
+      lender_name: form.lender_name,
+      original_principal: Number(form.original_principal),
+      annual_interest_rate: Number(form.annual_interest_rate),
+      origination_date: form.origination_date,
+      term_months: Number(form.term_months),
     });
     setForm({ lender_name: '', original_principal: '', annual_interest_rate: '', origination_date: '', term_months: '60' });
     load();
@@ -38,8 +32,8 @@ export default function Loans({ clientId }) {
       return;
     }
     setSelectedLoanId(loanId);
-    const res = await apiFetch(`/api/reports/loan-amortization?loan_id=${loanId}`);
-    setSchedule(await res.json());
+    const data = await runReport('loan-amortization', { loan_id: loanId });
+    setSchedule(data);
   };
 
   return (
@@ -104,14 +98,14 @@ export default function Loans({ clientId }) {
               </tr>
             </thead>
             <tbody>
-              {schedule.schedule.map((row) => (
+              {(schedule.schedule || []).map((row) => (
                 <tr key={row.payment_number} className="hoverable-row" style={table.row}>
                   <td style={table.cell}>{row.payment_number}</td>
-                  <td style={table.cell}>{row.date}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{row.payment_amount.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{row.principal.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{row.interest.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{row.remaining_balance.toFixed(2)}</td>
+                  <td style={table.cell}>{row.date?.slice(0, 10)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(row.payment_amount).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(row.principal).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(row.interest).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{Number(row.remaining_balance).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>

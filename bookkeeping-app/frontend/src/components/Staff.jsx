@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { listStaff, listAllUsers, grantStaffAccess, revokeStaffAccess, lockPeriod, unlockPeriod, getClient, getCurrentUser } from '../api';
 import ConfirmDialog from './ConfirmDialog';
 import { colors, fonts, spacing, button, input, select, table, alert } from '../theme';
 
@@ -11,42 +11,38 @@ export default function Staff({ clientId }) {
   const [client, setClient] = useState(null);
   const [lockDate, setLockDate] = useState(new Date().toISOString().slice(0, 10));
   const [confirmUnlock, setConfirmUnlock] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const load = () => {
-    apiFetch(`/api/clients/${clientId}/staff`).then((r) => r.json()).then(setStaff);
-    apiFetch('/api/auth/users').then((r) => r.json()).then((data) => (Array.isArray(data) ? setAllUsers(data) : setAllUsers([])));
-    apiFetch(`/api/clients/${clientId}`).then((r) => r.json()).then(setClient);
+  useEffect(() => { getCurrentUser().then(setCurrentUser); }, []);
+
+  const load = async () => {
+    setStaff(await listStaff(clientId));
+    setAllUsers(await listAllUsers());
+    const c = await getClient(clientId);
+    setClient(c);
   };
   useEffect(load, [clientId]);
 
   const grantAccess = async () => {
     if (!selectedUserId) return;
-    await apiFetch(`/api/clients/${clientId}/staff`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: selectedUserId }),
-    });
+    await grantStaffAccess(clientId, selectedUserId);
     setSelectedUserId('');
     load();
   };
 
   const revokeAccess = async () => {
-    await apiFetch(`/api/clients/${clientId}/staff/${revokeUserId}`, { method: 'DELETE' });
+    await revokeStaffAccess(clientId, revokeUserId);
     setRevokeUserId(null);
     load();
   };
 
-  const lockPeriod = async () => {
-    await apiFetch(`/api/clients/${clientId}/lock-period`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ locked_through_date: lockDate }),
-    });
+  const doLockPeriod = async () => {
+    await lockPeriod(clientId, lockDate);
     load();
   };
 
-  const unlockPeriod = async () => {
-    await apiFetch(`/api/clients/${clientId}/lock-period`, { method: 'DELETE' });
+  const doUnlockPeriod = async () => {
+    await unlockPeriod(clientId);
     setConfirmUnlock(false);
     load();
   };
@@ -57,9 +53,9 @@ export default function Staff({ clientId }) {
   return (
     <div>
       <h3 style={styles.title}>Period lock for this business</h3>
-      <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginBottom: spacing.lg }}>
+      <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginBottom: spacing.lg, flexWrap: 'wrap' }}>
         <input type="date" value={lockDate} onChange={(e) => setLockDate(e.target.value)} style={input.base} />
-        <button onClick={lockPeriod} style={button.primary}>Lock through this date</button>
+        <button onClick={doLockPeriod} style={button.primary}>Lock through this date</button>
         {client?.locked_through_date && (
           <div style={{ ...alert.warning, display: 'inline-flex', alignItems: 'center', gap: spacing.sm }}>
             <span>&#128274; Locked through <strong>{client.locked_through_date.slice(0, 10)}</strong>. Edit access is restricted to admins (with logged overrides).</span>
@@ -107,7 +103,7 @@ export default function Staff({ clientId }) {
         </table>
       </div>
 
-      <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginTop: spacing.lg }}>
+      <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginTop: spacing.lg, flexWrap: 'wrap' }}>
         <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ ...select, flex: 1, maxWidth: 360 }}>
           <option value="">Select a preparer to grant access…</option>
           {availableUsers.map((u) => (
@@ -121,7 +117,7 @@ export default function Staff({ clientId }) {
         <ConfirmDialog title="Revoke access" message="Revoke this person's access to this business?" confirmLabel="Revoke" onConfirm={revokeAccess} onCancel={() => setRevokeUserId(null)} />
       )}
       {confirmUnlock && (
-        <ConfirmDialog title="Unlock period" message="This reopens the period to edits by any preparer with access, not just admins. Continue?" confirmLabel="Unlock" onConfirm={unlockPeriod} onCancel={() => setConfirmUnlock(false)} />
+        <ConfirmDialog title="Unlock period" message="This reopens the period to edits by any preparer with access, not just admins. Continue?" confirmLabel="Unlock" onConfirm={doUnlockPeriod} onCancel={() => setConfirmUnlock(false)} />
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { listTransactions, updateTransaction, deleteTransaction, listVendors, getClient, isLockError, getCurrentUser, uploadDocument } from '../api';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
 import { colors, fonts, spacing, button, input, select, table, alert, badge } from '../theme';
@@ -14,18 +14,12 @@ export default function Owners({ clientId, customerId }) {
   const [reportError, setReportError] = useState(null);
   const [capitalEntryModal, setCapitalEntryModal] = useState(null);
 
-  const loadOwners = () => {
-    apiFetch(`/api/owners?client_id=${clientId}`).then((r) => r.json()).then(setOwners);
-  };
+  const loadOwners = () => { listOwners(clientId).then(setOwners); };
   useEffect(loadOwners, [clientId]);
 
   const addOwner = async () => {
     if (!name.trim() || !pct) return;
-    await apiFetch('/api/owners', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, customer_id: customerId, owner_type: ownerType, ownership_percentage: Number(pct), name }),
-    });
+    await createOwner({ client_id: clientId, customer_id: customerId, owner_type: ownerType, ownership_percentage: Number(pct), name });
     setName('');
     setPct('');
     loadOwners();
@@ -33,10 +27,10 @@ export default function Owners({ clientId, customerId }) {
 
   const runCapitalReport = async () => {
     setReportError(null);
-    const res = await apiFetch(`/api/reports/capital-accounts?client_id=${clientId}`);
-    const data = await res.json();
-    if (!res.ok) { setReportError(data.error); setCapitalReport(null); }
-    else setCapitalReport(data);
+    try {
+      const data = await runReport('capital-accounts', { client_id: clientId });
+      setCapitalReport(data);
+    } catch (err) { setReportError(err.message); setCapitalReport(null); }
   };
 
   const totalPct = owners.reduce((s, o) => s + Number(o.ownership_percentage), 0);
@@ -117,13 +111,13 @@ export default function Owners({ clientId, customerId }) {
               </tr>
             </thead>
             <tbody>
-              {capitalReport.owners.map((o) => (
+              {(capitalReport.owners || []).map((o) => (
                 <tr key={o.owner_id} className="hoverable-row" style={table.row}>
                   <td style={table.cell}>{o.name}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{o.contributions.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{o.distributions.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{o.allocated_income.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{o.ending_balance.toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(o.contributions).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(o.distributions).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(o.allocated_income).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{Number(o.ending_balance).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -136,11 +130,7 @@ export default function Owners({ clientId, customerId }) {
           entryType={capitalEntryModal.entryType}
           onClose={() => setCapitalEntryModal(null)}
           onSubmit={async (entryDate, amount) => {
-            await apiFetch(`/api/owners/${capitalEntryModal.ownerId}/capital-entries`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ entry_date: entryDate, entry_type: capitalEntryModal.entryType, amount: Number(amount) }),
-            });
+            await addCapitalEntry(capitalEntryModal.ownerId, capitalEntryModal.entryType, entryDate, Number(amount));
             setCapitalEntryModal(null);
             runCapitalReport();
           }}
@@ -180,57 +170,62 @@ function PersonalTier({ owner, onCrossReferenced }) {
   const [flagModalTxnId, setFlagModalTxnId] = useState(null);
   const [unflagTxnId, setUnflagTxnId] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const loadPersonalTxns = () => {
-    apiFetch(`/api/customers/${owner.customer_id}/transactions`).then((r) => r.json()).then((data) => setTransactions(data.transactions || []));
-    apiFetch(`/api/clients/${owner.client_id}`).then((r) => r.json()).then((c) => setAccounts(c.accounts || []));
+  useEffect(() => { getCurrentUser().then(setCurrentUser); }, []);
+
+  const loadPersonalTxns = async () => {
+    setTransactions(await listCustomerTransactions(owner.customer_id));
+    const c = await getClient(owner.client_id);
+    setAccounts(c.accounts || []);
   };
   useEffect(loadPersonalTxns, [owner.id]);
 
   const handleFiles = async (fileList, docType) => {
     setUploading(true);
     for (const file of Array.from(fileList)) {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('customer_id', owner.customer_id);
-      form.append('doc_type', docType);
-      form.append('ai_provider', aiProvider);
-      await apiFetch('/api/documents/upload', { method: 'POST', body: form });
+      try {
+        await uploadDocument(file, { customerId: owner.customer_id, docType, aiProvider });
+      } catch (err) { setErrorMessage(err.message); break; }
     }
     setUploading(false);
     loadPersonalTxns();
   };
 
   const setCategory = async (txnId, category) => {
-    await apiFetch(`/api/transactions/${txnId}/personal-category`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ personal_category: category }),
-    });
-    loadPersonalTxns();
+    try { await updatePersonalCategory(txnId, category); loadPersonalTxns(); }
+    catch (err) { setErrorMessage(err.message); }
   };
 
   const flagAsBusiness = async (txnId, accountId) => {
-    const res = await apiFetch(`/api/transactions/${txnId}/flag-as-business-expense`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner_id: owner.id, account_id: accountId }),
-    });
-    setFlagModalTxnId(null);
-    if (res.ok) { loadPersonalTxns(); onCrossReferenced(); }
-    else { const data = await res.json(); setErrorMessage(data.error); }
+    try {
+      await flagBusinessExpense(txnId, owner.id, accountId);
+      setFlagModalTxnId(null);
+      loadPersonalTxns();
+      onCrossReferenced();
+    } catch (err) {
+      setFlagModalTxnId(null);
+      setErrorMessage(err.message);
+    }
   };
 
   const unflag = async () => {
-    const res = await apiFetch(`/api/transactions/${unflagTxnId}/unflag-business-expense`, { method: 'POST' });
-    setUnflagTxnId(null);
-    if (res.ok) { loadPersonalTxns(); onCrossReferenced(); }
-    else { const data = await res.json(); setErrorMessage(data.error); }
+    try {
+      await unflagBusinessExpense(unflagTxnId);
+      setUnflagTxnId(null);
+      loadPersonalTxns();
+      onCrossReferenced();
+    } catch (err) {
+      setUnflagTxnId(null);
+      setErrorMessage(err.message);
+    }
   };
 
   const runPersonalStatement = async () => {
-    const res = await apiFetch(`/api/reports/personal-statement?owner_id=${owner.id}`);
-    setPersonalReport(await res.json());
+    try {
+      const data = await runReport('personal-statement', { owner_id: owner.id });
+      setPersonalReport(data);
+    } catch (err) { setErrorMessage(err.message); }
   };
 
   return (
@@ -320,15 +315,15 @@ function PersonalTier({ owner, onCrossReferenced }) {
       </button>
       {personalReport && (
         <div style={{ fontSize: fonts.sizeSm, background: colors.white, padding: spacing.lg, borderRadius: 6, border: `1px solid ${colors.border}` }}>
-          <strong style={{ color: colors.navy }}>Business expenses covered personally: {personalReport.business_expenses_covered.total.toFixed(2)}</strong>
+          <strong style={{ color: colors.navy }}>Business expenses covered personally: {Number(personalReport.business_expenses_covered?.total || 0).toFixed(2)}</strong>
           <div style={{ margin: `${spacing.md}px 0` }}>
             <strong style={{ color: colors.navy }}>Full personal income/expense by category (all businesses):</strong>
-            {personalReport.personal_statement.income.concat(personalReport.personal_statement.expenses).map((r) => (
+            {(personalReport.personal_statement?.categories || []).map((r) => (
               <div key={r.personal_category || 'uncategorized'} style={{ padding: `${spacing.xs}px 0`, fontFamily: fonts.mono }}>
                 {r.personal_category || '(uncategorized)'}: {Number(r.total).toFixed(2)}
               </div>
             ))}
-            <div style={{ fontWeight: fonts.weightSemibold, marginTop: spacing.sm }}>Net: {personalReport.personal_statement.net.toFixed(2)}</div>
+            <div style={{ fontWeight: fonts.weightSemibold, marginTop: spacing.sm }}>Net: {Number(personalReport.personal_statement?.net || 0).toFixed(2)}</div>
           </div>
         </div>
       )}

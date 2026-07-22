@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch, getCurrentUser } from '../api';
+import { listJournalEntries, createJournalEntry, deleteJournalEntry, getClient, isLockError, getCurrentUser } from '../api';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
 import { colors, fonts, spacing, button, input, select, table, alert } from '../theme';
@@ -14,50 +14,46 @@ export default function JournalEntries({ clientId }) {
   const [deleteEntryId, setDeleteEntryId] = useState(null);
   const [lockOverridePrompt, setLockOverridePrompt] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
-  const isAdmin = getCurrentUser()?.role === 'admin';
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const load = () => {
-    apiFetch(`/api/journal-entries?client_id=${clientId}`).then((r) => r.json()).then(setEntries);
-    apiFetch(`/api/clients/${clientId}`).then((r) => r.json()).then((c) => setAccounts(c.accounts || []));
+  useEffect(() => { getCurrentUser().then(setCurrentUser); }, []);
+
+  const load = async () => {
+    setEntries(await listJournalEntries(clientId));
+    const client = await getClient(clientId);
+    setAccounts(client.accounts || []);
   };
   useEffect(load, [clientId]);
 
-  const isLockError = (message) => message && message.toLowerCase().includes('locked period');
+  const isAdmin = currentUser?.role === 'admin';
 
-  const createEntry = async (payload, override) => {
-    const res = await apiFetch('/api/journal-entries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, ...payload, ...(override ? { override_lock: true } : {}) }),
-    });
-    if (res.ok) {
+  const submitEntry = async (payload, override) => {
+    try {
+      await createJournalEntry({ client_id: clientId, ...payload, ...(override ? { override_lock: true } : {}) });
       setShowEntryModal(false);
       setShowOpeningBalanceModal(false);
       setLockOverridePrompt(null);
       load();
-    } else {
-      const data = await res.json();
-      if (isAdmin && isLockError(data.error)) {
-        setLockOverridePrompt({ message: data.error, retry: () => createEntry(payload, true) });
+    } catch (err) {
+      if (isAdmin && isLockError(err)) {
+        setLockOverridePrompt({ message: err.message, retry: () => submitEntry(payload, true) });
       } else {
-        setErrorMessage(data.error);
+        setErrorMessage(err.message);
       }
     }
   };
 
-  const deleteEntry = async (override) => {
-    const params = override ? '?override_lock=true' : '';
-    const res = await apiFetch(`/api/journal-entries/${deleteEntryId}${params}`, { method: 'DELETE' });
-    if (res.ok) {
+  const handleDelete = async (override) => {
+    try {
+      await deleteJournalEntry(deleteEntryId, override);
       setDeleteEntryId(null);
       setLockOverridePrompt(null);
       load();
-    } else {
-      const data = await res.json();
-      if (isAdmin && isLockError(data.error)) {
-        setLockOverridePrompt({ message: data.error, retry: () => deleteEntry(true) });
+    } catch (err) {
+      if (isAdmin && isLockError(err)) {
+        setLockOverridePrompt({ message: err.message, retry: () => handleDelete(true) });
       } else {
-        setErrorMessage(data.error);
+        setErrorMessage(err.message);
         setDeleteEntryId(null);
       }
     }
@@ -114,13 +110,13 @@ export default function JournalEntries({ clientId }) {
       </div>
 
       {showEntryModal && (
-        <JournalEntryModal accounts={accounts} onClose={() => setShowEntryModal(false)} onSubmit={(payload) => createEntry(payload)} />
+        <JournalEntryModal accounts={accounts} onClose={() => setShowEntryModal(false)} onSubmit={(payload) => submitEntry(payload)} />
       )}
       {showOpeningBalanceModal && (
-        <OpeningBalanceModal accounts={accounts} openingBalanceEquityAccountId={openingBalanceEquityAccount?.id} onClose={() => setShowOpeningBalanceModal(false)} onSubmit={(payload) => createEntry(payload)} />
+        <OpeningBalanceModal accounts={accounts} openingBalanceEquityAccountId={openingBalanceEquityAccount?.id} onClose={() => setShowOpeningBalanceModal(false)} onSubmit={(payload) => submitEntry(payload)} />
       )}
       {deleteEntryId && (
-        <ConfirmDialog title="Delete journal entry" message="This removes all of its lines from the ledger. Are you sure?" confirmLabel="Delete" onConfirm={() => deleteEntry(false)} onCancel={() => setDeleteEntryId(null)} />
+        <ConfirmDialog title="Delete journal entry" message="This removes all of its lines from the ledger. Are you sure?" confirmLabel="Delete" onConfirm={() => handleDelete(false)} onCancel={() => setDeleteEntryId(null)} />
       )}
       {lockOverridePrompt && (
         <ConfirmDialog title="Period is locked" message={`${lockOverridePrompt.message} As an admin, you can override this for this one action — it will be logged.`} confirmLabel="Override and proceed" onConfirm={() => lockOverridePrompt.retry()} onCancel={() => setLockOverridePrompt(null)} />

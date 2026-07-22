@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { listFixedAssets, createFixedAsset, updateFixedAsset, runReport } from '../api';
 import Modal from './Modal';
 import { colors, fonts, spacing, button, input, table, alert } from '../theme';
 
@@ -13,43 +13,33 @@ export default function FixedAssets({ clientId }) {
     bonus_depreciation_amount: '0', useful_life_years: '5',
   });
 
-  const load = () => {
-    apiFetch(`/api/fixed-assets?client_id=${clientId}`).then((r) => r.json()).then(setAssets);
-  };
+  const load = () => { listFixedAssets(clientId).then(setAssets); };
   useEffect(load, [clientId]);
 
   const addAsset = async () => {
     if (!form.description.trim() || !form.purchase_date || !form.purchase_amount) return;
-    await apiFetch('/api/fixed-assets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        description: form.description,
-        purchase_date: form.purchase_date,
-        purchase_amount: Number(form.purchase_amount),
-        section_179_amount: Number(form.section_179_amount || 0),
-        bonus_depreciation_amount: Number(form.bonus_depreciation_amount || 0),
-        useful_life_years: Number(form.useful_life_years),
-      }),
+    await createFixedAsset({
+      client_id: clientId,
+      description: form.description,
+      purchase_date: form.purchase_date,
+      purchase_amount: Number(form.purchase_amount),
+      section_179_amount: Number(form.section_179_amount || 0),
+      bonus_depreciation_amount: Number(form.bonus_depreciation_amount || 0),
+      useful_life_years: Number(form.useful_life_years),
     });
     setForm({ description: '', purchase_date: '', purchase_amount: '', section_179_amount: '0', bonus_depreciation_amount: '0', useful_life_years: '5' });
     load();
   };
 
   const disposeAsset = async (date, amount) => {
-    await apiFetch(`/api/fixed-assets/${disposeAssetId}/dispose`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ disposed_date: date, disposed_amount: Number(amount || 0) }),
-    });
+    await updateFixedAsset(disposeAssetId, { disposed_date: date, disposed_amount: Number(amount || 0) });
     setDisposeAssetId(null);
     load();
   };
 
   const runSchedule = async () => {
-    const res = await apiFetch(`/api/reports/depreciation-schedule?client_id=${clientId}&year=${year}`);
-    setSchedule(await res.json());
+    const data = await runReport('depreciation-schedule', { client_id: clientId, year });
+    setSchedule(data);
   };
 
   return (
@@ -120,12 +110,12 @@ export default function FixedAssets({ clientId }) {
               </tr>
             </thead>
             <tbody>
-              {schedule.assets.map((a) => (
+              {(schedule.assets || []).map((a) => (
                 <tr key={a.asset_id} className="hoverable-row" style={table.row}>
                   <td style={table.cell}>{a.description}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{a.annualDepreciation.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{a.accumulatedDepreciation.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{a.bookValue.toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(a.annualDepreciation).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(a.accumulatedDepreciation).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{Number(a.bookValue).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>

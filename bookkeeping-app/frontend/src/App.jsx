@@ -12,24 +12,60 @@ import Loans from './components/Loans';
 import Payroll from './components/Payroll';
 import JournalEntries from './components/JournalEntries';
 import Staff from './components/Staff';
-import { apiFetch, getCurrentUser } from './api';
+import { getCurrentUser, onAuthChange, signOut, getClient } from './api';
 import { colors, fonts, spacing, radius, shadows, button } from './theme';
 
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem('auth_token'));
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [customerId, setCustomerId] = useState(null);
   const [clientId, setClientId] = useState(null);
   const [clientEntityType, setClientEntityType] = useState(null);
   const [tab, setTab] = useState('Upload');
 
   useEffect(() => {
+    let subscription;
+    (async () => {
+      subscription = await onAuthChange(async (event, sess) => {
+        setSession(sess);
+        if (sess?.user) {
+          const user = await getCurrentUser();
+          setCurrentUser(user);
+        } else {
+          setCurrentUser(null);
+          setCustomerId(null);
+          setClientId(null);
+        }
+        setLoading(false);
+      });
+    })();
+    return () => {
+      if (subscription?.data?.subscription?.unsubscribe) {
+        subscription.data.subscription.unsubscribe();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!clientId) return;
-    apiFetch(`/api/clients/${clientId}`).then((r) => r.json()).then((c) => setClientEntityType(c.entity_type));
+    getClient(clientId).then((c) => setClientEntityType(c.entity_type));
   }, [clientId]);
 
-  if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
+  const logout = async () => {
+    await signOut();
+  };
 
-  const currentUser = getCurrentUser();
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.pageBg }}>
+        <p style={{ color: colors.textMuted, fontSize: fonts.sizeMd }}>Loading…</p>
+      </div>
+    );
+  }
+
+  if (!session) return <Login onLogin={() => {}} />;
+
   const showOwnersTab = ['partnership', 's_corp'].includes(clientEntityType);
   const baseTabs = ['Upload', 'Review', 'Reports', 'Journal Entries', 'Vendors', 'Assets', 'Loans', 'Payroll'];
   const tabs = [
@@ -38,11 +74,6 @@ export default function App() {
     ...baseTabs.slice(2),
     ...(currentUser?.role === 'admin' ? ['Staff'] : []),
   ];
-
-  const logout = () => {
-    localStorage.removeItem('auth_token');
-    setLoggedIn(false);
-  };
 
   return (
     <div style={styles.page}>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiFetch } from '../api';
+import { runReport, exportExcel } from '../api';
 import { colors, fonts, spacing, button, input, select, table, alert } from '../theme';
 
 const REPORT_TYPES = {
@@ -14,40 +14,35 @@ export default function Reports({ clientId }) {
   const [data, setData] = useState(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [error, setError] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
-  const runReport = async () => {
-    const params = new URLSearchParams({ client_id: clientId });
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    const res = await apiFetch(`/api/reports/${reportType}?${params}`);
-    setData(await res.json());
+  const runReportHandler = async () => {
+    setError(null);
+    try {
+      const result = await runReport(reportType, { client_id: clientId, start_date: startDate, end_date: endDate });
+      setData(result);
+    } catch (err) {
+      setError(err.message);
+      setData(null);
+    }
   };
 
   const downloadExcel = async () => {
-    const params = new URLSearchParams({ client_id: clientId });
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    const res = await apiFetch(`/api/reports/export?${params}`);
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'eyneya-bookkeeping-export.xlsx';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const [uploadStatus, setUploadStatus] = useState(null);
-  const uploadToStorage = async () => {
-    setUploadStatus('Uploading…');
-    const res = await apiFetch('/api/reports/export-to-storage', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, start_date: startDate || undefined, end_date: endDate || undefined }),
-    });
-    const result = await res.json();
-    setUploadStatus(res.ok ? `Uploaded — saved to client's folder.` : `Failed: ${result.error}`);
+    setExporting(true);
+    try {
+      const blob = await exportExcel(clientId, startDate, endDate);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'eyneya-bookkeeping-export.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -62,14 +57,16 @@ export default function Reports({ clientId }) {
         <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={input.base} />
         <span style={{ color: colors.textMuted, fontSize: fonts.sizeSm }}>to</span>
         <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={input.base} />
-        <button onClick={runReport} style={button.primary}>Run report</button>
+        <button onClick={runReportHandler} style={button.primary}>Run report</button>
       </div>
 
       <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.xl, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button onClick={downloadExcel} style={button.secondary}>Download full Excel workbook</button>
-        <button onClick={uploadToStorage} style={button.secondary}>Save Excel to client's Drive/OneDrive folder</button>
-        {uploadStatus && <span style={{ fontSize: fonts.sizeSm, color: colors.textMuted }}>{uploadStatus}</span>}
+        <button onClick={downloadExcel} disabled={exporting} style={button.secondary}>
+          {exporting ? 'Generating…' : 'Download full Excel workbook'}
+        </button>
       </div>
+
+      {error && <div style={{ ...alert.error, marginBottom: spacing.lg }}>{error}</div>}
 
       {data && reportType === 'pl' && <PLView data={data} />}
       {data && reportType === 'balance-sheet' && <BalanceSheetView data={data} />}
@@ -80,6 +77,7 @@ export default function Reports({ clientId }) {
 }
 
 function ReportSection({ title, rows }) {
+  if (!rows || rows.length === 0) return null;
   return (
     <>
       <h4 style={styles.sectionTitle}>{title}</h4>
@@ -95,6 +93,10 @@ function ReportSection({ title, rows }) {
 
 function CapitalAccountsView({ data }) {
   if (data.error) return <div style={alert.error}>{data.error}</div>;
+  const owners = Array.isArray(data.owners) ? data.owners : [];
+  if (data.ownership_warning) {
+    return <div style={{ ...alert.warning, marginBottom: spacing.md }}>{data.ownership_warning}</div>;
+  }
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={table.container}>
@@ -109,14 +111,14 @@ function CapitalAccountsView({ data }) {
           </tr>
         </thead>
         <tbody>
-          {data.owners.map((o) => (
+          {owners.map((o) => (
             <tr key={o.owner_id} className="hoverable-row" style={table.row}>
               <td style={table.cell}>{o.name}</td>
               <td style={table.cell}>{o.ownership_percentage}%</td>
-              <td style={{ ...table.cell, fontFamily: fonts.mono }}>{o.contributions.toFixed(2)}</td>
-              <td style={{ ...table.cell, fontFamily: fonts.mono }}>{o.distributions.toFixed(2)}</td>
-              <td style={{ ...table.cell, fontFamily: fonts.mono }}>{o.allocated_income.toFixed(2)}</td>
-              <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{o.ending_balance.toFixed(2)}</td>
+              <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(o.contributions).toFixed(2)}</td>
+              <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(o.distributions).toFixed(2)}</td>
+              <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(o.allocated_income).toFixed(2)}</td>
+              <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{Number(o.ending_balance).toFixed(2)}</td>
             </tr>
           ))}
         </tbody>
@@ -126,29 +128,39 @@ function CapitalAccountsView({ data }) {
 }
 
 function PLView({ data }) {
+  if (!Array.isArray(data)) return <div style={alert.error}>Unexpected data format</div>;
+  const income = data.filter((r) => r.account_type === 'income');
+  const expenses = data.filter((r) => r.account_type === 'expense');
+  const totalIncome = income.reduce((s, r) => s + Number(r.total), 0);
+  const totalExpenses = expenses.reduce((s, r) => s + Number(r.total), 0);
   return (
     <div>
-      <ReportSection title="Income" rows={data.income} />
-      <ReportSection title="Expenses" rows={data.expenses} />
+      <ReportSection title="Income" rows={income} />
+      <ReportSection title="Expenses" rows={expenses} />
       <div style={{ ...styles.reportLine, borderTop: `2px solid ${colors.navy}`, marginTop: spacing.md, paddingTop: spacing.md }}>
         <span style={{ ...styles.reportLabel, fontWeight: fonts.weightBold, color: colors.navy }}>Net income</span>
-        <span style={{ ...styles.reportValue, fontWeight: fonts.weightBold, color: colors.navy, fontFamily: fonts.mono }}>{Number(data.net_income).toFixed(2)}</span>
+        <span style={{ ...styles.reportValue, fontWeight: fonts.weightBold, color: colors.navy, fontFamily: fonts.mono }}>{(totalIncome + totalExpenses).toFixed(2)}</span>
       </div>
     </div>
   );
 }
 
 function BalanceSheetView({ data }) {
+  if (!Array.isArray(data)) return <div style={alert.error}>Unexpected data format</div>;
+  const assets = data.filter((r) => r.account_type === 'asset');
+  const liabilities = data.filter((r) => r.account_type === 'liability');
+  const equity = data.filter((r) => r.account_type === 'equity');
   return (
     <div>
-      <ReportSection title="Assets" rows={data.assets} />
-      <ReportSection title="Liabilities" rows={data.liabilities} />
-      <ReportSection title="Equity" rows={data.equity} />
+      <ReportSection title="Assets" rows={assets} />
+      <ReportSection title="Liabilities" rows={liabilities} />
+      <ReportSection title="Equity" rows={equity} />
     </div>
   );
 }
 
 function GeneralLedgerView({ data }) {
+  if (!Array.isArray(data)) return <div style={alert.error}>Unexpected data format</div>;
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={table.container}>

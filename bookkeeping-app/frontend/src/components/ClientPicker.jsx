@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
-import { colors, fonts, spacing, radius, button, input, select } from '../theme';
+import { getCustomer, createClient, getCurrentUser } from '../api';
+import { colors, fonts, spacing, button, input, select } from '../theme';
 
 export default function ClientPicker({ customerId, onSelect, selectedClientId }) {
   const [businesses, setBusinesses] = useState([]);
@@ -9,25 +9,22 @@ export default function ClientPicker({ customerId, onSelect, selectedClientId })
   const [storageProvider, setStorageProvider] = useState('google');
   const [ownerType, setOwnerType] = useState('partner');
   const [ownershipPct, setOwnershipPct] = useState('100');
+  const [ownerName, setOwnerName] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const loadBusinesses = () => {
-    apiFetch(`/api/customers/${customerId}`).then((r) => r.json()).then((c) => setBusinesses(c.businesses || []));
-  };
+  const loadBusinesses = () => { getCustomer(customerId).then((c) => setBusinesses(c.businesses || [])); };
   useEffect(loadBusinesses, [customerId]);
 
   const createBusiness = async () => {
     if (!newName.trim()) return;
-    const res = await apiFetch('/api/clients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newName, entity_type: entityType, storage_provider: storageProvider,
-        customer_id: customerId, owner_type: ownerType, ownership_percentage: Number(ownershipPct),
-      }),
+    const customer = await getCustomer(customerId);
+    const business = await createClient({
+      name: newName, entity_type: entityType, storage_provider: storageProvider,
+      customer_id: customerId, owner_type: ownerType, ownership_percentage: Number(ownershipPct),
+      owner_name: ownerName || customer.name,
     });
-    const business = await res.json();
     setNewName('');
+    setOwnerName('');
     setShowForm(false);
     loadBusinesses();
     onSelect(business.id);
@@ -83,11 +80,14 @@ export default function ClientPicker({ customerId, onSelect, selectedClientId })
             </select>
           </div>
           <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center' }}>
+            <input
+              placeholder="Owner name (leave blank to use client name)"
+              value={ownerName}
+              onChange={(e) => setOwnerName(e.target.value)}
+              style={{ ...input.base, flex: 1, maxWidth: 300 }}
+            />
             <button onClick={createBusiness} style={button.primary}>Add business</button>
             <button onClick={() => { setShowForm(false); setNewName(''); }} style={button.secondary}>Cancel</button>
-            <span style={{ fontSize: fonts.sizeXs, color: colors.textSubtle }}>
-              Links the business to this client as an owner, sharing their personal upload tier across all businesses.
-            </span>
           </div>
         </div>
       )}

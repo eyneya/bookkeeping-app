@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
+import { listWorkers, createWorker, listPayrollPayments, createPayrollPayment, runReport } from '../api';
 import { colors, fonts, spacing, button, input, select, table, alert } from '../theme';
 
 export default function Payroll({ clientId }) {
@@ -9,32 +9,26 @@ export default function Payroll({ clientId }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [summary, setSummary] = useState(null);
 
-  const load = () => {
-    apiFetch(`/api/workers?client_id=${clientId}`).then((r) => r.json()).then(setWorkers);
-  };
+  const load = () => { listWorkers(clientId).then(setWorkers); };
   useEffect(load, [clientId]);
 
   const addWorker = async () => {
     if (!form.name.trim()) return;
-    await apiFetch('/api/workers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        name: form.name,
-        worker_type: form.worker_type,
-        hourly_rate: form.worker_type === 'w2_hourly' ? Number(form.hourly_rate || 0) : undefined,
-        annual_salary: form.worker_type === 'w2_salary' ? Number(form.annual_salary || 0) : undefined,
-        pay_frequency: form.worker_type !== '1099_contractor' ? form.pay_frequency : undefined,
-      }),
+    await createWorker({
+      client_id: clientId,
+      name: form.name,
+      worker_type: form.worker_type,
+      hourly_rate: form.worker_type === 'w2_hourly' ? Number(form.hourly_rate || 0) : undefined,
+      annual_salary: form.worker_type === 'w2_salary' ? Number(form.annual_salary || 0) : undefined,
+      pay_frequency: form.worker_type !== '1099_contractor' ? form.pay_frequency : undefined,
     });
     setForm({ name: '', worker_type: '1099_contractor', hourly_rate: '', annual_salary: '', pay_frequency: 'biweekly' });
     load();
   };
 
   const runSummary = async () => {
-    const res = await apiFetch(`/api/reports/payroll-summary?client_id=${clientId}&year=${year}`);
-    setSummary(await res.json());
+    const data = await runReport('payroll-summary', { client_id: clientId, year });
+    setSummary(data);
   };
 
   const typeLabel = { '1099_contractor': '1099 Contractor', w2_hourly: 'W-2 Hourly', w2_salary: 'W-2 Salary' };
@@ -111,7 +105,7 @@ export default function Payroll({ clientId }) {
         <p style={styles.note}>This automatically creates a vendor record so their payments feed the 1099 Summary report — track their payments via the Vendors tab, not pay runs.</p>
       )}
 
-      {selectedWorkerId && <PayRuns workerId={selectedWorkerId} />}
+      {selectedWorkerId && <PayRuns workerId={selectedWorkerId} clientId={clientId} />}
 
       <div style={styles.divider} />
 
@@ -133,13 +127,13 @@ export default function Payroll({ clientId }) {
               </tr>
             </thead>
             <tbody>
-              {summary.workers.map((w) => (
+              {(summary.workers || []).map((w) => (
                 <tr key={w.worker_id} className="hoverable-row" style={table.row}>
                   <td style={table.cell}>{w.name}</td>
                   <td style={table.cell}>{typeLabel[w.worker_type]}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{w.gross_pay.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{w.employer_tax_cost.toFixed(2)}</td>
-                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{w.net_pay.toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(w.gross_pay).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono }}>{Number(w.employer_tax_cost).toFixed(2)}</td>
+                  <td style={{ ...table.cell, fontFamily: fonts.mono, fontWeight: fonts.weightSemibold }}>{Number(w.net_pay).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -151,7 +145,7 @@ export default function Payroll({ clientId }) {
   );
 }
 
-function PayRuns({ workerId }) {
+function PayRuns({ workerId, clientId }) {
   const [runs, setRuns] = useState([]);
   const [form, setForm] = useState({
     pay_period_start: '', pay_period_end: '', pay_date: '', hours_worked: '', gross_pay: '',
@@ -159,30 +153,26 @@ function PayRuns({ workerId }) {
     employer_social_security: '0', employer_medicare: '0', employer_futa: '0', employer_suta: '0',
   });
 
-  const load = () => {
-    apiFetch(`/api/payroll-payments?worker_id=${workerId}`).then((r) => r.json()).then(setRuns);
-  };
-  useEffect(load, [workerId]);
+  const load = () => { listPayrollPayments(clientId).then((all) => setRuns(all.filter((r) => r.worker_id === workerId))); };
+  useEffect(load, [workerId, clientId]);
 
   const addRun = async () => {
     if (!form.pay_period_start || !form.pay_period_end || !form.pay_date || !form.gross_pay) return;
-    await apiFetch('/api/payroll-payments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        worker_id: workerId,
-        ...form,
-        hours_worked: form.hours_worked ? Number(form.hours_worked) : undefined,
-        gross_pay: Number(form.gross_pay),
-        federal_withholding: Number(form.federal_withholding || 0),
-        state_withholding: Number(form.state_withholding || 0),
-        social_security_employee: Number(form.social_security_employee || 0),
-        medicare_employee: Number(form.medicare_employee || 0),
-        employer_social_security: Number(form.employer_social_security || 0),
-        employer_medicare: Number(form.employer_medicare || 0),
-        employer_futa: Number(form.employer_futa || 0),
-        employer_suta: Number(form.employer_suta || 0),
-      }),
+    await createPayrollPayment({
+      client_id: clientId,
+      worker_id: workerId,
+      ...form,
+      hours_worked: form.hours_worked ? Number(form.hours_worked) : undefined,
+      gross_pay: Number(form.gross_pay),
+      federal_withholding: Number(form.federal_withholding || 0),
+      state_withholding: Number(form.state_withholding || 0),
+      social_security_employee: Number(form.social_security_employee || 0),
+      medicare_employee: Number(form.medicare_employee || 0),
+      employer_social_security: Number(form.employer_social_security || 0),
+      employer_medicare: Number(form.employer_medicare || 0),
+      employer_futa: Number(form.employer_futa || 0),
+      employer_suta: Number(form.employer_suta || 0),
+      net_pay: Number(form.gross_pay) - Number(form.federal_withholding || 0) - Number(form.state_withholding || 0) - Number(form.social_security_employee || 0) - Number(form.medicare_employee || 0),
     });
     load();
   };

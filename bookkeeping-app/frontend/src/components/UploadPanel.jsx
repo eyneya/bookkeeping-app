@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiFetch } from '../api';
+import { uploadDocument } from '../api';
 import { colors, fonts, spacing, radius, button, input, select, alert } from '../theme';
 
 export default function UploadPanel({ clientId }) {
@@ -16,23 +16,12 @@ export default function UploadPanel({ clientId }) {
     const errors = [];
 
     for (const file of Array.from(fileList)) {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('client_id', clientId);
-      form.append('doc_type', docType);
-      form.append('ai_provider', aiProvider);
-
       try {
-        const res = await apiFetch('/api/documents/upload', { method: 'POST', body: form });
-        if (res.ok) {
-          successCount++;
-        } else {
-          errorCount++;
-          const data = await res.json();
-          errors.push(data.error);
-        }
-      } catch {
+        await uploadDocument(file, { clientId, docType, aiProvider });
+        successCount++;
+      } catch (err) {
         errorCount++;
+        errors.push(err.message);
       }
     }
 

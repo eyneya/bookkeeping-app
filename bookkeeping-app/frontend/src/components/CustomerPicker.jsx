@@ -1,25 +1,18 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../api';
-import { colors, fonts, spacing, radius, button, input, select } from '../theme';
+import { listCustomers, createCustomer } from '../api';
+import { colors, fonts, spacing, button, input, select } from '../theme';
 
 export default function CustomerPicker({ onSelect, selectedCustomerId }) {
   const [customers, setCustomers] = useState([]);
   const [newName, setNewName] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const loadCustomers = () => {
-    apiFetch('/api/customers').then((r) => r.json()).then(setCustomers);
-  };
+  const loadCustomers = () => { listCustomers().then(setCustomers); };
   useEffect(loadCustomers, []);
 
-  const createCustomer = async () => {
+  const createCustomerHandler = async () => {
     if (!newName.trim()) return;
-    const res = await apiFetch('/api/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName }),
-    });
-    const customer = await res.json();
+    const customer = await createCustomer(newName);
     setNewName('');
     setShowForm(false);
     loadCustomers();
@@ -52,7 +45,7 @@ export default function CustomerPicker({ onSelect, selectedCustomerId }) {
             style={{ ...input.base, flex: 1, maxWidth: 300 }}
             autoFocus
           />
-          <button onClick={createCustomer} style={button.primary}>Add client</button>
+          <button onClick={createCustomerHandler} style={button.primary}>Add client</button>
           <button onClick={() => { setShowForm(false); setNewName(''); }} style={button.secondary}>Cancel</button>
         </div>
       )}

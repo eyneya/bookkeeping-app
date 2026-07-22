@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { API_BASE } from '../api';
+import { supabase } from '../api';
 import { colors, fonts, spacing, radius, shadows, button, input, alert } from '../theme';
 
 export default function Login({ onLogin }) {
@@ -16,33 +16,25 @@ export default function Login({ onLogin }) {
     setSuccessMsg(null);
     setLoading(true);
     try {
-      const path = isRegistering ? '/api/auth/register' : '/api/auth/login';
-      const res = await fetch(`${API_BASE}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        setError('Unable to reach the server. Please try again in a moment.');
-        return;
-      }
-      if (!res.ok) {
-        setError(data.error || 'Something went wrong. Please try again.');
-        return;
-      }
       if (isRegistering) {
+        const { error: signUpError } = await supabase.auth.signUp({ email, password });
+        if (signUpError) {
+          setError(signUpError.message);
+          return;
+        }
         setIsRegistering(false);
         setSuccessMsg('Account created successfully. Log in below with your credentials.');
         setPassword('');
       } else {
-        localStorage.setItem('auth_token', data.token);
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) {
+          setError(signInError.message);
+          return;
+        }
         onLogin();
       }
-    } catch {
-      setError('Unable to reach the server. Please check your connection and try again.');
+    } catch (err) {
+      setError(err.message || 'Unable to reach the server. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

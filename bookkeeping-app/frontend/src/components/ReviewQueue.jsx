@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { apiFetch, getCurrentUser } from '../api';
+import { listTransactions, updateTransaction, deleteTransaction, listVendors, getClient, isLockError, getCurrentUser } from '../api';
 import ConfirmDialog from './ConfirmDialog';
-import { colors, fonts, spacing, radius, button, input, select, table, alert, badge } from '../theme';
+import { colors, fonts, spacing, button, input, select, table, alert, badge } from '../theme';
 
 export default function ReviewQueue({ clientId }) {
   const [transactions, setTransactions] = useState([]);
@@ -13,61 +13,53 @@ export default function ReviewQueue({ clientId }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [lockOverridePrompt, setLockOverridePrompt] = useState(null);
-  const isAdmin = getCurrentUser()?.role === 'admin';
+  const [currentUser, setCurrentUser] = useState(null);
   const PAGE_SIZE = 100;
 
-  const load = () => {
-    const params = new URLSearchParams({ client_id: clientId, limit: PAGE_SIZE, offset });
-    if (search) params.append('q', search);
-    apiFetch(`/api/transactions?${params}`).then((r) => r.json()).then((data) => {
-      setTransactions(data.transactions || []);
-      setTotal(data.total || 0);
-    });
-    apiFetch(`/api/clients/${clientId}`).then((r) => r.json()).then((c) => setAccounts(c.accounts || []));
-    apiFetch(`/api/vendors?client_id=${clientId}`).then((r) => r.json()).then(setVendors);
+  useEffect(() => { getCurrentUser().then(setCurrentUser); }, []);
+
+  const load = async () => {
+    const data = await listTransactions({ clientId, search, limit: PAGE_SIZE, offset });
+    setTransactions(data.transactions);
+    setTotal(data.total);
+    const client = await getClient(clientId);
+    setAccounts(client.accounts || []);
+    setVendors(await listVendors(clientId));
   };
 
   useEffect(load, [clientId, offset, search]);
 
-  const isLockError = (message) => message && message.toLowerCase().includes('locked period');
-
-  const deleteTransaction = async (override) => {
-    const params = override ? '?override_lock=true' : '';
-    const res = await apiFetch(`/api/transactions/${confirmDeleteId}${params}`, { method: 'DELETE' });
-    if (res.ok) {
+  const handleDelete = async (override) => {
+    try {
+      await deleteTransaction(confirmDeleteId, override);
       setConfirmDeleteId(null);
       setLockOverridePrompt(null);
       load();
-    } else {
-      const data = await res.json();
-      if (isAdmin && isLockError(data.error)) {
+    } catch (err) {
+      if (currentUser?.role === 'admin' && isLockError(err)) {
         setConfirmDeleteId(null);
-        setLockOverridePrompt({ message: data.error, retry: () => deleteTransaction(true) });
+        setLockOverridePrompt({ message: err.message, retry: () => handleDelete(true) });
       } else {
-        setDeleteError(data.error);
+        setDeleteError(err.message);
       }
     }
   };
 
-  const updateTransaction = async (id, updates, override) => {
-    const res = await apiFetch(`/api/transactions/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(override ? { ...updates, override_lock: true } : updates),
-    });
-    if (res.ok) {
+  const handleUpdate = async (id, updates, override) => {
+    try {
+      await updateTransaction(id, override ? { ...updates, override_lock: true } : updates);
       load();
-    } else {
-      const data = await res.json();
-      if (isAdmin && isLockError(data.error)) {
-        setLockOverridePrompt({ message: data.error, retry: () => updateTransaction(id, updates, true) });
+    } catch (err) {
+      if (currentUser?.role === 'admin' && isLockError(err)) {
+        setLockOverridePrompt({ message: err.message, retry: () => handleUpdate(id, updates, true) });
       } else {
-        setDeleteError(data.error);
+        setDeleteError(err.message);
       }
     }
   };
 
   const needsReviewCount = transactions.filter((t) => t.needs_review).length;
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <div>
@@ -122,7 +114,7 @@ export default function ReviewQueue({ clientId }) {
                 <td style={table.cell}>
                   <select
                     value={t.account_id || ''}
-                    onChange={(e) => updateTransaction(t.id, { account_id: e.target.value })}
+                    onChange={(e) => handleUpdate(t.id, { account_id: e.target.value })}
                     style={{ ...input.small, minWidth: 140 }}
                   >
                     <option value="" disabled>Choose account…</option>
@@ -134,7 +126,7 @@ export default function ReviewQueue({ clientId }) {
                 <td style={table.cell}>
                   <select
                     value={t.is_business === null ? '' : String(t.is_business)}
-                    onChange={(e) => updateTransaction(t.id, { is_business: e.target.value === 'true' })}
+                    onChange={(e) => handleUpdate(t.id, { is_business: e.target.value === 'true' })}
                     style={{ ...input.small, minWidth: 100 }}
                   >
                     <option value="" disabled>—</option>
@@ -145,7 +137,7 @@ export default function ReviewQueue({ clientId }) {
                 <td style={table.cell}>
                   <select
                     value={t.vendor_id || ''}
-                    onChange={(e) => updateTransaction(t.id, { vendor_id: e.target.value || null })}
+                    onChange={(e) => handleUpdate(t.id, { vendor_id: e.target.value || null })}
                     style={{ ...input.small, minWidth: 120 }}
                   >
                     <option value="">— none —</option>
@@ -191,7 +183,7 @@ export default function ReviewQueue({ clientId }) {
           title="Delete transaction"
           message="This cannot be undone. Are you sure?"
           confirmLabel="Delete"
-          onConfirm={() => deleteTransaction(false)}
+          onConfirm={() => handleDelete(false)}
           onCancel={() => setConfirmDeleteId(null)}
         />
       )}
