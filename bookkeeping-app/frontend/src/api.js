@@ -1,4 +1,4 @@
-import { supabase } from './lib/supabaseClient';
+import { supabase, SUPABASE_URL } from './lib/supabaseClient';
 
 export { supabase };
 
@@ -409,7 +409,7 @@ export async function uploadDocument(file, { clientId, customerId, docType, aiPr
   if (customerId) formData.append('customer_id', customerId);
 
   const { data: sessionData } = await supabase.auth.getSession();
-  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/document-upload`, {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/document-upload`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${sessionData.session.access_token}`,
@@ -426,7 +426,7 @@ export async function exportExcel(clientId, startDate, endDate) {
   const params = new URLSearchParams({ client_id: clientId });
   if (startDate) params.append('start_date', startDate);
   if (endDate) params.append('end_date', endDate);
-  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/excel-export?${params}`, {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/excel-export?${params}`, {
     headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
   });
   if (!response.ok) throw new Error('Export failed');
